@@ -1,198 +1,309 @@
 # Frontistirio — Store Management Brain
 
-> **Purpose:** Documents how stores (tutoring centers), groups, teaching periods, and store settings are structured and managed. This is the top-level organizational layer of the platform.
+> **Full-stack reference** for stores, groups, teaching periods, store settings, and classrooms — the top-level organizational layer. The teaching period is the most critical concept: it scopes ALL data throughout the system.
 
 ---
 
-## Overview
-
-The platform is multi-tenant. The hierarchy is:
+## Organizational Hierarchy
 
 ```
-Group (franchise/chain)
-  └── Store (individual tutoring center)
-        ├── TeachingPeriod (academic year/semester)
-        ├── Students, Teachers, Courses, Classes
-        └── StoreSettings (configuration)
-```
-
-A **SuperAdmin** manages Groups and Stores. A **store-user** manages everything within their Store.
-
----
-
-## Models
-
-### Store (`models/stores.js`)
-
-```
-Store {
-  name              String
-  group             → Group
-  address           → Address
-  user_id           → User (the store-user admin)
-  teaching_periods  → [TeachingPeriod]
-  isDeleted         Boolean
-  deletedAt         Date
-  createdBy / updatedBy → User
-}
-```
-
-### Group (`models/group.js`)
-
-```
-Group {
-  name      String
-  stores    → [Store]
-}
-```
-
-### TeachingPeriod (`models/teaching_periods.js`)
-
-```
-TeachingPeriod {
-  name        String
-  date_from   Date (required)
-  date_to     Date (required)
-  store_id    → Store
-  default     Boolean     // only one period per store is "default" (active)
-  isDeleted   Boolean
-  deletedAt   Date
-}
-```
-
-### StoreSettings (`models/store-settings.js`)
-
-```
-StoreSettings {
-  store_id    → Store
-  // (configuration fields — notification prefs, display options, etc.)
-}
-```
-
-### Address (`models/address.js`)
-
-```
-Address {
-  address   String
-  number    Number
-  zip_code  Number
-  country   String
-}
+Group (franchise/chain)  ← superadmin manages
+  └── Store (individual tutoring center) ← store-user manages
+        ├── TeachingPeriod (one is always "default" = active) ← THE scoping key
+        ├── StoreSettings (configuration)
+        └── All entities (students, teachers, courses, classes, materials...)
+              → All period-scoped via { period: ObjectId, ... } arrays
 ```
 
 ---
 
-## API Endpoints
+## Backend: MongoDB Models
 
-### Stores (`routes/stores.js`)
+### `models/stores.js`
+```javascript
+{
+  name: String,
+  group: ObjectId → Group,
+  address: ObjectId → Address,
+  user_id: ObjectId → User,
+  teaching_periods: [ObjectId → TeachingPeriod],
+  isDeleted: Boolean, deletedAt: Date,
+  createdBy/updatedBy: ObjectId → User,
+  timestamps: true
+}
+```
 
-| Method | Path | Description | Auth |
+### `models/group.js`
+```javascript
+{ name: String, stores: [ObjectId → Store] }
+```
+
+### `models/teaching_periods.js` — THE CENTRAL SCOPING MODEL
+```javascript
+{
+  name: String,
+  date_from: Date (required),
+  date_to: Date (required),
+  store_id: ObjectId → Store,
+  default: Boolean (default: false),  // ← EXACTLY ONE should be true per store
+  updatedBy: ObjectId → User,
+  isDeleted: Boolean, deletedAt: Date,
+  timestamps: true
+}
+```
+
+### `models/store-settings.js`
+```javascript
+{ store_id: ObjectId → Store, /* configuration fields */ }
+```
+
+### `models/address.js`
+```javascript
+{ address: String, number: Number, zip_code: Number, country: String }
+```
+
+### `models/classroom.js`
+```javascript
+{ name: String, capacity: Number, store_id: ObjectId → Store }
+```
+
+---
+
+## Backend: Routes
+
+### `/stores` (`routes/stores.js`)
+| Method | Path | Role | Controller |
 |---|---|---|---|
-| POST | `/stores/` | Create a store | superadmin |
-| PUT | `/stores/:id` | Edit a store | superadmin |
-| DELETE | `/stores/:id` | Delete a store | superadmin |
-| GET | `/stores/` | Get all stores | superadmin |
-| GET | `/stores/:id` | Get single store | superadmin, store-user |
+| POST | `/stores/create-store` | superadmin | `createStore` |
+| POST | `/stores/edit-store` | superadmin | `editStore` |
+| DELETE | `/stores/delete-store` | superadmin | `deleteStore` |
+| GET | `/stores/getAll` | superadmin | `getAllStores` |
 
-### Groups (`routes/group.js`)
-
-| Method | Path | Description | Auth |
-|---|---|---|---|
-| POST | `/group/` | Create a group | superadmin |
-| PUT | `/group/:id` | Edit a group | superadmin |
-| GET | `/group/` | Get all groups | superadmin |
-
-### Teaching Periods (`routes/teaching_periods.js`)
-
-| Method | Path | Description | Auth |
-|---|---|---|---|
-| POST | `/teaching-periods/` | Create a period | store-user |
-| PUT | `/teaching-periods/:id` | Edit a period | store-user |
-| DELETE | `/teaching-periods/:id` | Delete a period | store-user |
-| GET | `/teaching-periods/` | Get store periods | store-user |
-| PUT | `/teaching-periods/:id/set-default` | Set as active period | store-user |
-| POST | `/teaching-periods/:id/copy-forward` | Copy data to new period | store-user |
-
-### Store Settings (`routes/store-settings.js`)
-
-| Method | Path | Description |
+### `/group` (`routes/group.js`)
+| Method | Path | Role |
 |---|---|---|
-| GET | `/store-settings/` | Get store settings |
-| PUT | `/store-settings/` | Update store settings |
+| POST | `/group/create-group` | superadmin |
+| POST | `/group/edit-group` | superadmin |
+| DELETE | `/group/delete-group` | superadmin |
+| GET | `/group/getAll` | superadmin |
+
+### `/teaching-periods` (`routes/teaching_periods.js`)
+| Method | Path | Role | Controller |
+|---|---|---|---|
+| GET | `/teaching-periods/get-teaching-periods` | isStoreUser | `getStoreTeachingPeriods` |
+| POST | `/teaching-periods/get-store-teaching-period` | isStoreUser | `getStoreTeachingPeriodReferences` |
+| POST | `/teaching-periods/get-store-teaching-period-classes` | isStoreUser | `getStoreTeachingPeriodClasses` |
+| POST | `/teaching-periods/get-store-teaching-period-students` | isStoreUser | `getStoreTeachingPeriodStudents` |
+| POST | `/teaching-periods/create-store-teaching-period` | isStoreUser | `createStoreTeachingPeriod` |
+| POST | `/teaching-periods/edit-store-teaching-period` | isStoreUser | `editStoreTeachingPeriod` |
+| DELETE | `/teaching-periods/delete-store-teaching-period` | isStoreUser | `deleteStoreTeachingPeriod` |
+| POST | `/teaching-periods/set-default-teaching-period` | isStoreUser | `setDefaultTeachingPeriod` |
+
+### `/store-settings` (`routes/store-settings.js`)
+| Method | Path | Role |
+|---|---|---|
+| GET | `/store-settings/get-store-settings` | isStoreUser |
+| POST | `/store-settings/upsert-store-settings` | isStoreUser |
+
+### `/classrooms` (`routes/classrooms.js`)
+| Method | Path | Role |
+|---|---|---|
+| GET | `/classrooms/get-store-classrooms` | isStoreUser |
+| POST | `/classrooms/create-store-classroom` | isStoreUser |
+| POST | `/classrooms/edit-store-classroom` | isStoreUser |
+| DELETE | `/classrooms/delete-store-classroom` | isStoreUser |
 
 ---
 
-## Store Creation Flow (SuperAdmin)
-
-1. Create `Address` document
-2. Create `Store` document (linked to group + address)
-3. Update `Group.stores` to include the new store
-4. All done in a **MongoDB transaction**
+## Backend: Store Creation (Controller — MongoDB Transaction)
 
 ```javascript
-const new_address = await addressHandler.createAddress(..., session);
-const new_store = await storeHandler.createStore(..., session);
+// body: { name, address: { address, number, zip_code, country }, group: groupId }
+const new_address = await addressHandler.createAddress(
+  address.address, address.number, address.zip_code, address.country, req.user.id, session
+);
+const new_store = await storeHandler.createStore(
+  body.name, group_id, new_address._id, req.user.id, session
+);
+// Bidirectional: add store to group
 await groupsHandler.updateGroupStores(group_id, new_store._id, session);
 await session.commitTransaction();
 ```
 
 ---
 
-## Teaching Period System
+## Backend: Teaching Period System
 
-Teaching periods are the core time unit. **Everything in the system is scoped to a period.**
+### `getStoreDefaultPeriod(storeId, session?)` — used EVERYWHERE
+```javascript
+return await TeachingPeriod.findOne({ store_id: storeId, default: true });
+```
+This single query is called at the start of virtually every controller that handles store-specific data. If it returns `null`, most controllers throw `'not_set_default_period'` or similar.
 
-### Default Period
-- Each store has exactly **one default (active) period** at a time
-- `TeachingPeriod.default = true`
-- All API endpoints call `getStoreDefaultPeriod(store_id)` to get the active period
-- Changing the active period changes what data the entire frontend sees
+### `setDefaultTeachingPeriod(periodId, store_id, session)` — global scope change
+```javascript
+// Step 1: Unset ALL other periods for this store
+await TeachingPeriod.updateMany(
+  { store_id: store_id, _id: { $ne: periodId } },
+  { $set: { default: false } },
+  { session }
+);
+// Step 2: Set the target period as default
+period.default = true;
+await period.save({ session });
+```
 
-### Creating a New Period
-1. `POST /teaching-periods/` with `date_from`, `date_to`
-2. Period created and added to `Store.teaching_periods`
-3. Done in a transaction
+**Warning:** Calling this changes the active period for the entire store. Everything the frontend shows immediately shifts to the new period's data. All bootstrap data becomes stale.
 
-### Copying Forward to New Period
-When starting a new school year:
-1. `POST /teaching-periods/:id/copy-forward`
-2. Copies students, courses, classes, teachers into the new period
-3. Resets enrollments (you can choose what to carry over)
+### `createStoreTeachingPeriod` (Controller — Transaction)
+1. Validate `date_from`, `date_to`
+2. Create `TeachingPeriod` document
+3. Call `storeHandler.updateStoreTeachingPeriods(store_id, [period._id], user_id, session)` — adds the period to `Store.teaching_periods`
+4. Commit transaction
+
+### Handler Exports
+```javascript
+exports.createStoreTeachingPeriods(teachingPeriodData, store_id, user_id, session)
+exports.fetchStoreTeachingPeriods(store_id)
+exports.editStoreTeachingPeriod(teachingPeriodData, store_id, user_id)
+exports.deleteStoreTeachingPeriod(periodId, permanently, user_id, session)
+exports.getStoreTeachingPeriod(periodId)
+exports.setDefaultTeachingPeriod(periodId, store_id, session)
+exports.getStoreDefaultPeriod(storeId, session?)    // ← called everywhere
+exports.watchTeachingPeriods(io, userSockets)
+```
 
 ---
 
-## Teaching Period — The Central Scoping Key
+## Frontend: NgRx Slices for Store Management
 
-Almost every query in the system uses the default period:
-```javascript
-const default_period = await teachinPeriodHandler.getStoreDefaultPeriod(req.user?.store);
-const periodId = default_period._id;
-// Then: filter everything by periodId
+```typescript
+AppState {
+  groups: GroupState              // { groups: Group[] }
+  stores: StoresState             // { stores: Store[] }
+  teaching_periods: TeachingPeriodsState  // { teaching_periods: TeachingPeriod[] }
+  classrooms: ClassroomsState     // { classrooms: Classroom[] }
+  storeSettings: StoreSettingsState   // { settings: StoreSettings | null }
+}
 ```
 
-This pattern appears in every controller. If something looks wrong or missing, always check if the period is correct.
+Selectors: `selectAllGroups`, `selectStores`, `selectTeachingPeriods`, `selectClassRooms`, `selectStoreSettings`
+
+---
+
+## Frontend: The Default Period Pattern (Critical)
+
+The active period is found reactively everywhere in the frontend:
+```typescript
+// In any component:
+this.store.select(selectTeachingPeriods).pipe(
+  map(periods => periods.find(p => p.default === true))
+)
+```
+
+`HomePage` uses `combineLatest` including `selectTeachingPeriods` — when the default period changes (socket `periodUpdated` event → NgRx update), the home page re-renders with the new period's data.
+
+---
+
+## Frontend: Teaching Periods Service (`services/teaching-periods.service.ts`)
+
+```typescript
+addTeachingPeriod(teaching_period)
+  → POST /teaching-periods/create-store-teaching-period
+
+editTeachingPeriod(teaching_period)
+  → POST /teaching-periods/edit-store-teaching-period
+
+setDefaultPeriod(periodId)
+  → POST /teaching-periods/set-default-teaching-period
+  // ⚠️ Changes what ALL components show — triggers re-render of all period-scoped data
+
+deleteTeachingPeriod(periodId, permanently)
+  → DELETE /teaching-periods/delete-store-teaching-period
+
+getStoreTeachingPeriodCourses(periodId)
+  → POST /teaching-periods/get-store-teaching-period  body: { periodId }
+
+getStoreTeachingPeriodClasses(periodId)
+  → POST /teaching-periods/get-store-teaching-period-classes
+
+getStoreTeachingPeriodStudents(periodId)
+  → POST /teaching-periods/get-store-teaching-period-students
+```
+
+---
+
+## Frontend: Settings Service (`services/settings.service.ts`)
+
+```typescript
+getStoreSettings()      → GET /store-settings/get-store-settings
+updateStoreSettings(s)  → POST /store-settings/upsert-store-settings
+```
+
+---
+
+## Frontend: Classroom Service (`services/classroom.service.ts`)
+
+```typescript
+getStoreClassrooms()        → GET /classrooms/get-store-classrooms
+addClassroom(room)          → POST /classrooms/create-store-classroom
+editClassroom(room)         → POST /classrooms/edit-store-classroom
+deleteClassroom(id, perm)   → DELETE /classrooms/delete-store-classroom
+```
+
+---
+
+## Frontend: Components
+
+### `GroupsComponent` (`/groups`) + `AddGroupComponent` + `GroupItemComponent`
+Superadmin only. Lists groups with their stores. Create/edit groups. Each group shows its stores.
+
+### `StoresComponent` (`/stores`) + `StoreDetailsComponent` (`/store/:id`)
+Superadmin only. `StoreDetailsComponent` shows store info + list of users. Contains `AddStoreUserComponent` — creates a store-user account for the store.
+
+### `TeachingPeriodsComponent` (`/periods`, role: store-user)
+Lists all periods for the store. Shows which is currently default.
+
+### `TeachingPeriodItemComponent`
+The richest period component (8.7KB TS):
+- View period details
+- "Set as Default" button → `setDefaultPeriod(periodId)` → changes global data scope
+- Import data from another period (copy-forward functionality)
+- Shows students, courses, classes within this period
+
+### `SettingsComponent` (`/settings`)
+General store configuration. Contains `SetCourseSettingsComponent` for per-course settings.
+
+### `ClassroomsComponent` (`/classrooms`, role: store-user)
+Lists physical classrooms. `AddClassroomDiagramComponent` (13KB) provides an interactive layout diagram builder for room configuration.
 
 ---
 
 ## Real-Time Sync
 
-- `watchStores(io, userSockets)` — Change Stream on `Store`
-- `watchGroups(io, userSockets)` — Change Stream on `Group`
-- `watchTeachingPeriods(io, userSockets)` — Change Stream on `TeachingPeriod`
-- `watchStoreSettings(io, userSockets)` — Change Stream on `StoreSettings`
+| Backend watcher | Events emitted | NgRx actions |
+|---|---|---|
+| `watchGroups` | `groupAdded/Updated/Deleted` | `GroupActions.*` |
+| `watchStores` | `storeAdded/Updated/Deleted` | `StoresActions.*` |
+| `watchTeachingPeriods` | `periodAdded/Updated/Deleted` | `TeachingPeriodsActions.*` |
+| `watchClassRooms` | `classRoomsUpdated` (single event) | `ClassroomsActions.*` |
+| `watchStoreSettings` | `settingsAdded/Updated` | `StoreSettingsActions.*` |
 
-All push live updates to connected clients.
+When a period's `default` field changes via socket (e.g. another user set a different period as default), the frontend NgRx `teaching_periods` array updates, and all components using `selectTeachingPeriods` with `find(p => p.default === true)` automatically re-render with the new period's data.
 
 ---
 
-## Helper: `getStoreIdByModel`
+## `getStoreIdByModel` Helpers
 
-Located at `helpers/getStoreIdByModel`:
-A utility to look up the `store_id` for any document, used for authorization checks:
-- `getStoreIdForClass.js`
-- `getStoreIdForCourse.js`
-- `getStoreIdForStudent.js`
-- `getStoreIdForTeacher.js`
-- etc.
+Located at `helpers/getStoreIdByModel` — a set of helper functions used by watchers to identify which store a changed document belongs to:
 
-These helpers ensure a user can only modify documents belonging to their own store.
+```javascript
+// helpers/getStoreIdForStudent.js
+module.exports = async (studentId) => {
+  const student = await Student.findById(studentId, 'store_id');
+  return student?.store_id;
+};
+// Similar files exist for: Class, Course, Teacher, Grade, Material, Period, Classroom, StoreSettings
+```
+
+These are needed for UPDATE events where `store_id` may not be in `updatedFields`. The watcher calls the helper to look up the store, then targets only that store's connected users.
