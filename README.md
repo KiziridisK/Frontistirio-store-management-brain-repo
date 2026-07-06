@@ -54,8 +54,22 @@ Group (franchise/chain)  ← superadmin manages
 
 ### `models/store-settings.js`
 ```javascript
-{ store_id: ObjectId → Store, /* configuration fields */ }
+{
+  store_id: ObjectId → Store,
+  course_hour_duration: Number (required),   // teaching-hour length in minutes
+  break_times: [{ dayOfWeek: 1-7, timeRanges: [{ startTime: "HH:mm", endTime: "HH:mm" }] }],
+  require_grade_approval: Boolean (default false),  // added 2026-07-06 — teacher grades need admin approval
+  createdBy/updatedBy: ObjectId → User, isDeleted, deletedAt, timestamps
+}
 ```
+
+**Adding a new setting field:** the upsert controller (`upsertStoreSettings`) copies every key from
+`req.body.settings` onto the doc, but `updateStoreSettings` only persists keys in
+`ALLOWED_UPDATE_FIELDS` (`controllers/handlers/store-settings.js`). So a new field needs BOTH the schema
+field AND an entry in `ALLOWED_UPDATE_FIELDS` (currently
+`["course_hour_duration", "break_times", "require_grade_approval"]`). The frontend `SetCourseSettingsComponent`
+sends the whole `store_settings` object, so a simple `ion-toggle`/input bound to the field is enough on the UI side.
+`require_grade_approval` powers the grade-approval workflow — see the `grading-system` brain.
 
 ### `models/address.js`
 ```javascript
