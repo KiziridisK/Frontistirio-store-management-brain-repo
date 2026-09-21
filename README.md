@@ -1,6 +1,10 @@
 # Frontistirio — Store Management Brain
 
 > **Full-stack reference** for stores, groups, teaching periods, store settings, and classrooms — the top-level organizational layer. The teaching period is the most critical concept: it scopes ALL data throughout the system.
+>
+> **See also (2026-09-21):** the `/settings` page is now a hub (`.sp-*`, per-row autosave), and per-store **branding** lives in
+> `StoreSettings.branding`. Both are documented in **`Frontistirio-ui-conventions-brain-repo`** §3 and §6. Store subscriptions are in the
+> superadmin brain repo. ⚠️ This README was last verified 2026-07-06.
 
 ---
 
