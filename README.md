@@ -1,5 +1,12 @@
 # Frontistirio — Store Management Brain
 
+> **Κατάσταση τεκμηρίωσης** (σφραγίδα 2026-10-24) · τελευταία γραφή **2026-09-21**.
+> **Δεν φέρει επαλήθευση έναντι κώδικα** — κανόνας #4 του ευρετηρίου. Από εκείνη την ημερομηνία ο κώδικας
+> έχει προχωρήσει **89 commits** στο frontend και **20** στο API (όλο το repo, όχι μόνο αυτό το feature).
+> Σημερινά HEAD: frontend `0f466e0` / API `cabaa2c`.
+> Η γραφή της 2026-09-21 πρόσθεσε **μόνο παραπομπές**· το σώμα σταματά **2026-07-06**.
+> Τι είναι **γνωστό** ότι λείπει: §5 και §5.1 του ευρετηρίου (`Frontistirio-brain-repos-index`).
+
 > **Full-stack reference** for stores, groups, teaching periods, store settings, and classrooms — the top-level organizational layer. The teaching period is the most critical concept: it scopes ALL data throughout the system.
 >
 > **See also (2026-09-21):** the `/settings` page is now a hub (`.sp-*`, per-row autosave), and per-store **branding** lives in
